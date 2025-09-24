@@ -7,7 +7,8 @@
 
     #savings-estimator{ letter-spacing:.2px; }
     #savings-estimator .label{ letter-spacing:.3px; }
-    #savings-estimator .left .panel { position: relative; }
+    #savings-estimator .left .panel { position: relative; } /* contains the FAB */
+    html, body { overflow: hidden; } /* avoid inner scrollbars when embedded */
 
     .wrap{display:flex;gap:32px;align-items:flex-start}
     .left {flex:1 1 66%}
@@ -33,8 +34,29 @@
 
     .users-head{display:flex;align-items:center;justify-content:space-between;margin-top:18px}
 
-    .btn-adv{position:absolute;bottom:20px;right:20px;z-index:10;width:50px;height:50px;border:none;border-radius:50%;background:var(--accent);color:#fff;font-weight:900;font-size:28px;line-height:1;display:none;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.2);}
-    .btn-adv.show{display:flex;}
+    /* FAB: centered + / − built with pseudo-elements */
+    #savings-estimator .btn-adv{
+      position:absolute;bottom:20px;right:20px;z-index:10;
+      width:50px;height:50px;border:none;border-radius:50%;
+      background:var(--accent);color:#fff;cursor:pointer;
+      display:none;align-items:center;justify-content:center;
+      box-shadow:0 4px 12px rgba(0,0,0,.2);
+      font-size:0; line-height:0; /* hide text baseline */
+    }
+    #savings-estimator .btn-adv.show{display:flex;}
+    #savings-estimator .btn-adv::before{
+      content:""; position:absolute; left:50%; top:50%;
+      width:22px; height:3px; background:#fff; border-radius:2px;
+      transform:translate(-50%,-50%);
+    }
+    #savings-estimator .btn-adv::after{
+      content:""; position:absolute; left:50%; top:50%;
+      width:3px; height:22px; background:#fff; border-radius:2px;
+      transform:translate(-50%,-50%);
+      transition:opacity .15s ease;
+    }
+    /* minus state hides the vertical bar */
+    #savings-estimator .btn-adv[aria-expanded="true"]::after{ opacity:0; }
 
     .advanced{display:none;margin-top:8px}
     .advanced.open{display:block}
@@ -66,7 +88,7 @@
     #pro-plan-card .addon-toggle input[type="checkbox"]:checked::after{content:'✓';color:#fff;font-size:14px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);line-height:1}
     #pro-plan-card .addon-toggle label{cursor:pointer;font-size:.95rem;user-select:none}
 
-    /* NEW: discount row in Falinwa orange */
+    /* Discount row in Falinwa orange */
     #savings-estimator .list li.discount,
     #savings-estimator .list li.discount .rule{color:var(--highlight);font-weight:800}
   </style>
@@ -84,7 +106,7 @@
           <button class="btn-round" id="btnPlus"  aria-label="Add one">+</button>
         </div>
 
-        <button id="btnAdvanced" class="btn-adv" aria-expanded="false" aria-controls="advancedBox">+</button>
+        <button id="btnAdvanced" class="btn-adv" aria-expanded="false" aria-controls="advancedBox" aria-label="Open advanced settings">+</button>
 
         <div id="advancedBox" class="advanced" role="region">
           <div class="inline-inputs" style="margin-top:8px">
@@ -216,15 +238,16 @@
         } else {
           advBtn.classList.remove('show');
           advBox.classList.remove('open');
-          advBtn.textContent = '+';
           advBtn.setAttribute('aria-expanded','false');
         }
+        sendHeight();
       }
 
       advBtn.addEventListener('click', ()=>{
         const open = advBox.classList.toggle('open');
         advBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        advBtn.textContent = open ? '–' : '+';
+        advBtn.setAttribute('aria-label', open ? 'Close advanced settings' : 'Open advanced settings');
+        sendHeight();
       });
 
       function renderTiles(){
@@ -276,6 +299,16 @@
         return { items, total };
       }
 
+      // --- iframe auto-resize: child sends height to parent ---
+      function sendHeight(){
+        try {
+          window.parent.postMessage(
+            { type: "resize-savings-iframe", height: document.documentElement.scrollHeight },
+            "*"
+          );
+        } catch (e) { /* noop */ }
+      }
+
       function recalc(){
         // revenue context
         const perUser = revenuePerUser(state.users);
@@ -304,8 +337,8 @@
         });
 
         // Totals & Savings
-        document.getElementById('appsMonthly').textContent   = fmtEUR(totalMonthlyApps);
-        document.getElementById('withUsMonthly').textContent = fmtEUR(breakdown.total);
+        appsMonthlyEl.textContent   = fmtEUR(totalMonthlyApps);
+        withUsMonthlyEl.textContent = fmtEUR(breakdown.total);
 
         const savingsMonthly = totalMonthlyApps - breakdown.total;
         savingsMonthlyEl.textContent = fmtEUR(savingsMonthly);
@@ -318,18 +351,26 @@
         profitTotalEl.textContent   = fmtEUR(ppu * state.users);
 
         updateAdvancedToggle();
+        sendHeight(); // reflect any height change
       }
 
       usersInput.addEventListener('change', ()=>{ state.users = Math.max(1, parseInt(usersInput.value||'1',10)); usersInput.value = state.users; recalc(); });
-      document.getElementById('btnMinus').addEventListener('click', (e)=>{ e.preventDefault(); if(state.users>1){ state.users--; usersInput.value=state.users; recalc(); }});
-      document.getElementById('btnPlus').addEventListener('click',  (e)=>{ e.preventDefault(); state.users++; usersInput.value=state.users; recalc(); });
+      btnMinus.addEventListener('click', (e)=>{ e.preventDefault(); if(state.users>1){ state.users--; usersInput.value=state.users; recalc(); }});
+      btnPlus .addEventListener('click',  (e)=>{ e.preventDefault(); state.users++; usersInput.value=state.users; recalc(); });
 
       ticketsPerMonth.addEventListener('input', ()=>{ state.tickets = parseFloat(ticketsPerMonth.value)||0; recalc(); });
       avgTicketPrice .addEventListener('input', ()=>{ state.avgTicket = parseFloat(avgTicketPrice.value)||0; recalc(); });
 
-      document.getElementById('toggleCluedoo').addEventListener('change', (e)=>{ state.includeCluedoo = !!e.target.checked; recalc(); });
+      toggleCluedoo.addEventListener('change', (e)=>{ state.includeCluedoo = !!e.target.checked; recalc(); });
 
-      renderTiles(); recalc();
+      // Auto-resize hooks
+      window.addEventListener('load', sendHeight);
+      window.addEventListener('resize', sendHeight);
+      new ResizeObserver(sendHeight).observe(document.body);
+
+      // Init
+      renderTiles();
+      recalc();
     })();
   </script>
 </section>
